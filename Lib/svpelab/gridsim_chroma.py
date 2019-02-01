@@ -56,10 +56,20 @@ def params(info, group_name):
     info.param(pname('i_max'), label='Max Current', default=75.0)
     info.param(pname('freq'), label='Frequency', default=60.0)
     info.param(pname('comm'), label='Communications Interface', default='VISA', values=['VISA'])
+    #info.param(pname('visa_device'), label='VISA Device String', active=pname('comm'),
+    #           active_value=['VISA'], default='USB0::0x0A69::0x086C::662040000329::0::INSTR')
+    #info.param(pname('visa_device'), label='VISA Device String', active=pname('comm'),
+    #           active_value=['VISA'], default='ASRL5::INSTR')
     info.param(pname('visa_device'), label='VISA Device String', active=pname('comm'),
-               active_value=['VISA'], default='USB0::0x0A69::0x086C::662040000329::0::INSTR')
+               active_value=['VISA'], default='TCPIP::192.168.0.10::2101::SOCKET')
+    
+
+
     info.param(pname('visa_path'), label='VISA Path', active=pname('comm'),
                active_value=['VISA'], default='C:/Program Files (x86)/IVI Foundation/VISA/WinNT/agvisa/agbin/visa32.dll')
+    info.param(pname('baud_rate'), label='Baud Rate', active=pname('comm'),
+               active_value=['VISA'], default='19200') # wanbin 
+
 
 GROUP_NAME = 'chroma'
 
@@ -78,18 +88,23 @@ class GridSim(gridsim.GridSim):
       Visa Path
 
     """
-    def __init__(self, ts, group_name):
+    
+    def _param_value(self, name):	#wanbin # from pvsim_terrasas.py
+        return self.ts.param_value(self.group_name + '.' + GROUP_NAME + '.' + name)
 
+    def __init__(self, ts, group_name):
+       
         gridsim.GridSim.__init__(self, ts, group_name)
         self.conn = None
-        self.phases = ts._param_value('phases')
-        self.v_range_param = ts._param_value('v_range')
-        self.v_max_param = ts._param_value('v_max')
-        self.i_max_param = ts._param_value('i_max')
-        self.freq_param = ts._param_value('freq')
-        self.comm = ts._param_value('comm')
-        self.visa_device = ts._param_value('visa_device')
-        self.visa_path = ts._param_value('visa_path')
+        self.phases = self._param_value('phases')
+        self.v_range_param = self._param_value('v_range')
+        self.v_max_param = self._param_value('v_max')
+        self.i_max_param = self._param_value('i_max')
+        self.freq_param = self._param_value('freq')
+        self.comm = self._param_value('comm')
+        self.visa_device = self._param_value('visa_device')
+        self.visa_path = self._param_value('visa_path')
+        self.baud_rate= self._param_value('baud_rate')	#wanbin
 
         self.cmd_str = ''
         self._cmd = None
@@ -97,18 +112,23 @@ class GridSim(gridsim.GridSim):
         self.dev = chroma_61845.ChromaGridSim(visa_device=self.visa_device,
                                      visa_path=self.visa_path)
         self.dev.open()
+        
         self.dev.config()
         self.profile_name = ts.param_value('profile.profile_name')
+        #
 
         state = self.relay()
         output_state = self.output()
-
+        
         if state != gridsim.RELAY_CLOSED or output_state != gridsim.OUTPUT_ON:
             self.ts.log('Turning on grid simulator.')
+            self.voltage(voltage=277)
             self.output(state=gridsim.OUTPUT_ON)
             self.relay(state=gridsim.RELAY_CLOSED)
 
         self.config()
+
+        
 
     def cmd(self, cmd_str):
         self.cmd_str = cmd_str
@@ -140,7 +160,7 @@ class GridSim(gridsim.GridSim):
         provided parameters.
         """
         self.ts.log('Grid simulator model: %s' % self.info().strip())
-
+        
         # put simulator in regenerative mode
         state = self.regen()
         if state != gridsim.REGEN_ON:
@@ -158,11 +178,14 @@ class GridSim(gridsim.GridSim):
 
         v_max = self.v_max_param
         v1, v2, v3 = self.voltage_max()
+        
+        self.ts.log(v_max)
         if v1 != v_max or v2 != v_max or v3 != v_max:
             self.voltage_max(voltage=(v_max, v_max, v_max))
             v1, v2, v3 = self.voltage_max()
+            self.ts.log("v1 : %f, %f" % (v1, v_max))
         self.ts.log('Grid sim max voltage settings: v1 = %s, v2 = %s, v3 = %s' % (v1, v2, v3))
-
+        
         # set max current if it's not already at gridsim_Imax
         i_max = self.i_max_param
         current = self.current()
