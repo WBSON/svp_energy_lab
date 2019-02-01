@@ -15,12 +15,13 @@ class ChromaGridSimError(Exception):
 
 class ChromaGridSim(object):
 
-    def __init__(self, visa_device, visa_path = None):
+    def __init__(self, visa_device, visa_path = None, baud_rate=19200):	
 
         self.conn = None
 
         self.visa_device = visa_device
         self.visa_path = visa_path
+        self.baud_rate=baud_rate 
 
     def _query(self, cmd_str):
         """
@@ -93,7 +94,7 @@ class ChromaGridSim(object):
             self.cmd('sour:phase:p12 120.0\n')
             self.cmd('sour:phase:p13 240.0\n')
             self.cmd('sour:phase:three independ\n')
-            self.cmd('isnt:edit all')
+            self.cmd('inst:edit all') 
             self.cmd('sour:func:shap:a sine\n')
             self.cmd('sour:func:shape a\n')
 
@@ -115,10 +116,14 @@ class ChromaGridSim(object):
         try:
             # sys.path.append(os.path.normpath(self.visa_path))
             import visa
-            self.rm = visa.ResourceManager(self.visa_path)
+            #self.rm = visa.ResourceManager(self.visa_path) 
+            self.rm = visa.ResourceManager() 
             self.conn = self.rm.open_resource(self.visa_device)
+            self.conn.baud_rate=self.baud_rate	
             # set terminator in pyvisa
             self.conn.write_termination = TERMINATOR
+            self.conn.read_termination = TERMINATOR
+            
 
         except Exception, e:
             raise ChromaGridSimError('Cannot open VISA connection to %s' % (self.visa_device))
@@ -251,12 +256,24 @@ class ChromaGridSim(object):
             # self.ts.log_debug('voltage: %s, type: %s' % (voltage, type(voltage)))
             if type(voltage) is not list and type(voltage) is not tuple:
                 self.cmd('inst:edit all')
-                self.cmd('source:volt:lev:imm:ampl:ac %0.1f\n' % voltage)
+                self.cmd('source:volt:lev:imm:ampl:ac %0.1f' % voltage)
             else:
+                '''
                 self.cmd('inst:edit all')
-                self.cmd('source:volt:lev:imm:ampl:ac %0.1f\n' % voltage[0])  # use the first value in the 3 phase list
+                self.cmd('source:volt:lev:imm:ampl:ac %0.1f' % voltage[0])  # use the first value in the 3 phase list
+                '''
+                self.cmd('inst:edit each')
+                self.cmd('inst:nselect 1')
+                self.cmd('source:volt:lev:imm:ampl:ac %0.1f' % voltage[0])
+                self.cmd('inst:nselect 2')
+                self.cmd('source:volt:lev:imm:ampl:ac %0.1f' % voltage[1])                
+                self.cmd('inst:nselect 3')
+                self.cmd('source:volt:lev:imm:ampl:ac %0.1f' % voltage[2])
+                self.cmd('inst:edit all')
+                
         v1 = self.query('source:volt:lev:imm:ampl:ac?\n')
         return float(v1), float(v1), float(v1)
+
 
     def voltage_max(self, voltage=None):
         """
@@ -268,16 +285,21 @@ class ChromaGridSim(object):
             voltage = max(voltage)  # voltage is a triplet but chroma only takes one value
             if voltage is not None:
                 if (voltage > 0 and voltage < 300):
-                    self.cmd('source:volt:limit:ac %0.0f\n' % voltage)
+                    self.cmd('source:volt:limit:ac %0.0f' % voltage)
                 else: raise(ChromaGridSimError ('Votlage out of range'))
-            v1 = self.query('source:volt:limit:ac?\n')
+        
+        v1 = self.query('source:volt:limit:ac?')
         return float(v1), float(v1), float(v1)
+
 
     def voltage_range(self, range):
         if range == 300:
-            self.cmd('voltage:range hi')
+            #self.cmd('VOLTage:RANGe HIGH')
+            self.cmd('source:volt:HIGH')
         elif range == 150:
-            self.cmd('voltage:range low')
+            #self.cmd('VOLTage:RANGe LOW')
+            #self.cmd('SOURce:VOLTage:RANGe LOW')
+            self.cmd('source:volt:LOW')
         else:
             raise (ChromaGridSimError('Voltage Range is not supported'))
 
